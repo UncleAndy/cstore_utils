@@ -1,11 +1,25 @@
+import java.io.File;
+import java.io.FileWriter;
 import java.sql.*;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
 import java.sql.ResultSet;
+import java.text.SimpleDateFormat;
 
 import java.util.ArrayList;
+import java.util.Date;
+
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
+
+// ВАЖНО!!! Скрипт необходимо запускать под пользователем postgres
 
 /*
 	1. Получаем foreign_server из information_schema.foreign_servers (для объявления CREATE SERVER)
@@ -35,6 +49,74 @@ class CstoreDump
     public static void main(String args[]){
         ArrayList<CstoreTable> cstore_tables = new ArrayList<CstoreTable>();
 
+        Option p_host = new Option("h", "host", true, "postgres db host");
+        Option p_port = new Option("p", "port", true, "postgres db port");
+        Option p_db_name = new Option("d", "dbname", true, "postgres db name");
+        Option p_db_user = new Option("u", "dbuser", true, "postgres db user");
+        Option p_db_pass = new Option("w", "dbpass", true, "postgres db password");
+        Option p_tmp_path = new Option("t", "tmp_path", true, "path for temporary files");
+        Option p_backup_path = new Option("b", "backups_path", true, "path for backups files");
+
+        Options options = new Options();
+        options.addOption(p_host);
+        options.addOption(p_port);
+        options.addOption(p_db_name);
+        options.addOption(p_db_user);
+        options.addOption(p_db_pass);
+        options.addOption(p_tmp_path);
+        options.addOption(p_backup_path);
+
+        String host = "";
+        String port = "";
+        String db_name = "";
+        String db_user = "";
+        String db_pass = "";
+        
+        String backups_path = "";
+        String temp_path = "";
+        
+        CommandLineParser parser = new DefaultParser();
+        try {
+			CommandLine line = parser.parse( options, args );
+			
+			if ( !line.hasOption("h") || 
+					!line.hasOption("d") || 
+					!line.hasOption("u") ||
+					!line.hasOption("b") ) {
+				throw new ParseException("Absent required option.");
+			};
+			
+			host = line.getOptionValue("h", "localhost");
+			port = line.getOptionValue("p", "5432");
+			db_name = line.getOptionValue("d", "postgres");
+			db_user = line.getOptionValue("u", "postgres");
+			db_pass = line.getOptionValue("w", "");
+			backups_path = line.getOptionValue("b", "/tmp");
+			temp_path = line.getOptionValue("t", "/tmp");
+		} catch (ParseException e1) {
+			HelpFormatter formatter = new HelpFormatter(); 
+			formatter.printHelp( "cstore_dump", options );
+			System.exit(0);
+		}
+        
+        File theDir = new File(temp_path + "/" + db_name);
+        if ( !theDir.exists() ) {
+            System.out.println("creating directory: " + theDir.getName() + "...");
+            boolean result = false;
+
+            try{
+                theDir.mkdir();
+                result = true;
+            } 
+            catch(SecurityException se){
+                //handle it
+            }        
+            if(result) {    
+                System.out.println("DIR created");  
+            }
+        };
+        theDir.setWritable(true, false);
+        
         System.out.println("Start backup cstore tables...");
 
         Connection c = null;
@@ -42,8 +124,8 @@ class CstoreDump
         try {
            Class.forName("org.postgresql.Driver");
            c = DriverManager
-              .getConnection("jdbc:postgresql://localhost:5433/test",
-              "postgres", "");
+              .getConnection("jdbc:postgresql://" + host + ":" + port + "/" + db_name,
+              db_user, db_pass);
            c.setAutoCommit(false);
            System.out.println("Opened database successfully");
 
@@ -146,7 +228,8 @@ class CstoreDump
                rs.close();
                
         	   // create table ddl
-        	   t.ddl = "CREATE FOREIGN TABLE " + t.schema + "." + t.name + " (\n";
+               t.ddl = "CREATE SCHEMA IF NOT EXISTS " + t.schema + ";\n\n";
+        	   t.ddl += "CREATE FOREIGN TABLE IF NOT EXISTS " + t.schema + "." + t.name + " (\n";
         	   String sep = "\t";
                for ( String column : t.columns ) {
             	   t.ddl += sep + column;
@@ -173,13 +256,37 @@ class CstoreDump
                t.ddl += ";";
                
         	   System.out.println( "DDL for table: " + t.ddl );
-           }
+        	   
+        	   String ddl_file_name = temp_path + "/" + db_name + "/" + t.schema + "." + t.name + ".ddl.sql";
+        	   File ddl_file = new File(ddl_file_name);
+        	   if ( !ddl_file.exists() ) {
+        		   ddl_file.createNewFile();
+        	   }
+        	   FileWriter fw = new FileWriter(ddl_file);
+        	   fw.write(t.ddl);
+        	   fw.close();
+        	   
+               String data_backup_file = temp_path + "/" + db_name + "/" + t.schema + "." + t.name + ".gz";
+               System.out.println( "Data for table: " + t.schema + "." + t.name + " saved to " + data_backup_file + "..." );
+               stmt.execute("COPY " + t.schema + "." + t.name + " TO PROGRAM 'gzip -c - > " + data_backup_file + " && chmod 666 " + data_backup_file + "';");
+               System.out.println( "Data for table: " + t.schema + "." + t.name + " saved");
+           };
            
+
+           SimpleDateFormat sdf = new SimpleDateFormat("yyyy_MM_dd");
+           Date now = new Date();
+           String date_string = sdf.format(now);
+           String target_file = backups_path + "/sctore_" + db_name + "_" + date_string + ".tar"; 
            
+           System.out.println( "Unit to tar: " + target_file + "...");
+           Process tar = Runtime.getRuntime().exec("tar cf " + target_file + " --directory " + temp_path + "/" + db_name + "/ .");
+           tar.waitFor();
+           System.out.println( "Unit to tar: " + target_file + " finished");
            
-           
-           
-           
+           System.out.println( "Clean temporary files...");
+           for (File file: theDir.listFiles()) 
+        	    if (file.isFile()) file.delete();
+           System.out.println( "Clean temporary files done");
            
            stmt.close();
            c.close();
