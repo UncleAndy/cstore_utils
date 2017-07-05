@@ -47,6 +47,8 @@ class CstoreTable {
 class CstoreDump
 {
     public static void main(String args[]){
+        System.out.println("Start...");
+        
         ArrayList<CstoreTable> cstore_tables = new ArrayList<CstoreTable>();
 
         Option p_host = new Option("h", "host", true, "postgres db host");
@@ -255,8 +257,6 @@ class CstoreDump
                
                t.ddl += ";";
                
-        	   System.out.println( "DDL for table: " + t.ddl );
-        	   
         	   String ddl_file_name = temp_path + "/" + db_name + "/" + t.schema + "." + t.name + ".ddl.sql";
         	   File ddl_file = new File(ddl_file_name);
         	   if ( !ddl_file.exists() ) {
@@ -295,10 +295,6 @@ class CstoreDump
            System.exit(0);
         }
 
-
-
-
+        System.out.println("Finish");
     }
-
-    
 }
