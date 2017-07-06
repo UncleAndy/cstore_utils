@@ -4,6 +4,7 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.sql.Statement;
 
 import org.apache.commons.cli.CommandLine;
@@ -51,6 +52,7 @@ class CstoreRestore
         String temp_path = "";
         
         CommandLineParser parser = new DefaultParser();
+        File theDir;
         try {
 			CommandLine line = parser.parse( options, args );
 			
@@ -79,7 +81,7 @@ class CstoreRestore
 			System.exit(0);
 		}
         
-        File theDir = new File(temp_path + "/" + db_name);
+        theDir = new File(temp_path + "/" + db_name);
         if ( !theDir.exists() ) {
             System.out.println("creating directory: " + theDir.getName() + "...");
             boolean result = false;
@@ -169,15 +171,27 @@ class CstoreRestore
 	        System.out.println("Commit...");
 	        c.commit();
 	        System.out.println("Commit done");
-	        
 	        System.out.println( "Clean temporary files...");
-	        for (File file: theDir.listFiles()) 
-        	    if (file.isFile()) file.delete();
+	        clean_tmp_files(theDir);
 	        System.out.println( "Clean temporary files done");
         } catch ( Exception e ) {
-            System.err.println( e.getClass().getName()+": "+ e.getMessage() );
+            System.out.println( e.getMessage() );
+	        System.out.println("Rollback...");
+			try {
+				c.rollback();
+			} catch (SQLException e1) {
+			}
+	        System.out.println("Rollback done");
+	        System.out.println( "Clean temporary files...");
+	        clean_tmp_files(theDir);
+	        System.out.println( "Clean temporary files done");
             System.exit(0);
         }
         System.out.println("Finish");
+    };
+    
+    static void clean_tmp_files(File dir) {
+        for (File file: dir.listFiles()) 
+    	    if (file.isFile()) file.delete();
     };
 }

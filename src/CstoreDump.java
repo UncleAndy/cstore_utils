@@ -225,13 +225,14 @@ class CstoreDump
             	   };
             	   
             	   t.columns.add(column_definition);
-            	   System.out.println( "Column for table: " + t.name + " = " + column_definition );
+//            	   System.out.println( "Column for table: " + t.name + " = " + column_definition );
                };
                rs.close();
                
-        	   // create table ddl
-               t.ddl = "CREATE SCHEMA IF NOT EXISTS " + t.schema + ";\n\n";
-        	   t.ddl += "CREATE FOREIGN TABLE IF NOT EXISTS " + t.schema + "." + t.name + " (\n";
+        	   // create table ddl (error if not exists schema or exists table)
+//             t.ddl = "CREATE SCHEMA IF NOT EXISTS " + t.schema + ";\n\n";
+//        	   t.ddl += "CREATE FOREIGN TABLE IF NOT EXISTS " + t.schema + "." + t.name + " (\n";
+        	   t.ddl = "CREATE FOREIGN TABLE " + t.schema + "." + t.name + " (\n";
         	   String sep = "\t";
                for ( String column : t.columns ) {
             	   t.ddl += sep + column;
